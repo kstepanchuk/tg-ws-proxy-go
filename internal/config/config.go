@@ -39,6 +39,9 @@ type Config struct {
 	FrontingSNI string
 	// CFNoSecure connects to Cloudflare hosts on port 80 without TLS.
 	CFNoSecure bool
+	// CFWorkerDomains are Cloudflare Worker hosts used as a last-resort relay:
+	// wss://<domain>/apiws?dst=<DC IP>&dc=<n>.
+	CFWorkerDomains []string
 	// Log file with size-based rotation ("" logs to stdout).
 	LogFile         string
 	LogMaxMB        float64

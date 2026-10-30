@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -53,6 +54,8 @@ type Server struct {
 	verboseDebug *debugEventTracker
 	cfEvents     *cfEventTracker
 	wsDialFunc   wsbridge.DialFunc
+	// wsDialWorkerFunc dials a Cloudflare Worker relay (replaced in tests).
+	wsDialWorkerFunc func(ctx context.Context, cfg config.Config, workerDomain, dstIP string, dc int) (*wsbridge.Client, error)
 
 	proxyTCPFunc         func(ctx context.Context, conn net.Conn, host string, port int) error
 	proxyTCPWithInitFunc func(ctx context.Context, conn net.Conn, host string, port int, init []byte) error
@@ -89,8 +92,9 @@ func NewServer(cfg config.Config, logger *log.Logger) *Server {
 			failed:    make(map[string]int),
 			connected: make(map[string]int),
 		},
-		wsDialFunc: wsbridge.DialAuto,
-		cfBalancer: &cfbalance.Balancer{},
+		wsDialFunc:       wsbridge.DialAuto,
+		wsDialWorkerFunc: wsbridge.DialWorker,
+		cfBalancer:       &cfbalance.Balancer{},
 	}
 	if srv.pool != nil {
 		srv.pool.SetDialFunc(srv.wsDialFunc)
@@ -290,6 +294,34 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 
 	if tryCloudflare && s.cfg.UseCFProxyFirst && allowTelegramWS {
 		s.debugf("[%s] cloudflare-first fallback exhausted, telegram websocket failed: %v", clientAddr, lastErr)
+	}
+
+	// Last resort: a Cloudflare Worker relaying raw TCP to the DC.
+	if len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
+		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, targetIP); err == nil {
+			s.debugf("[%s] route=websocket fallback=cf-worker dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
+			return ws, nil
+		} else {
+			s.stats.recordError("ws_worker_connect", err)
+			lastErr = err
+		}
+	}
+	return nil, lastErr
+}
+
+// connectWSWorker tries the configured Worker domains in random order.
+func (s *Server) connectWSWorker(ctx context.Context, dc, effectiveDC int, dstIP string) (*wsbridge.Client, error) {
+	domains := append([]string(nil), s.cfg.CFWorkerDomains...)
+	rand.Shuffle(len(domains), func(i, j int) { domains[i], domains[j] = domains[j], domains[i] })
+	var lastErr error
+	for _, domain := range domains {
+		s.debugf("ws cf-worker attempt: dc=%d dst=%s worker=%s", effectiveDC, dstIP, config.MaskCFDomainForLog(domain))
+		ws, err := s.wsDialWorkerFunc(ctx, s.cfg, domain, dstIP, effectiveDC)
+		if err == nil {
+			return ws, nil
+		}
+		s.stats.incWSErrors()
+		lastErr = err
 	}
 	return nil, lastErr
 }

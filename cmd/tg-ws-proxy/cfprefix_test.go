@@ -46,3 +46,16 @@ func TestParseArgsNoSecure(t *testing.T) {
 		t.Fatal("no-secure must default to off")
 	}
 }
+
+func TestParseArgsCFWorkerDomains(t *testing.T) {
+	pa, err := parseArgs([]string{"-cf-worker-domain", "a.workers.dev, b.workers.dev"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pa.cfg.CFWorkerDomains) != 2 || pa.cfg.CFWorkerDomains[1] != "b.workers.dev" {
+		t.Fatalf("domains: %v", pa.cfg.CFWorkerDomains)
+	}
+	if _, err := parseArgs([]string{"-cf-worker-domain", "not a domain"}); err == nil {
+		t.Fatal("invalid worker domain accepted")
+	}
+}

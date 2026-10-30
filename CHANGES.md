@@ -34,6 +34,11 @@
 - **`--no-secure`** (upstream `disable_secure`): подключение к хостам Cloudflare по порту 80
   без TLS (режим SSL «Flexible»). SNI не отправляется вообще, поэтому SNI-фильтры не
   срабатывают, и нет затрат на TLS-рукопожатие. К IP Telegram не относится. По умолчанию выключено.
+- **CF Worker** (`--cf-worker-domain a.workers.dev,b.workers.dev`): запасной маршрут, когда ни
+  Cloudflare по своему домену, ни прямой WebSocket Telegram не сработали. Клиент открывает
+  `wss://<worker>/apiws?dst=<IP DC>&dc=<N>`; сам Worker - скрипт из upstream `docs/EN/CfWorker.md`.
+  Порядок воркеров случайный. Только режим SOCKS5; без пула. Проверено юнит-тестами, живого
+  Worker для проверки у меня не было.
 
 ## Тесты
 

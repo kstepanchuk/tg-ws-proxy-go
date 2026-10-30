@@ -95,3 +95,9 @@ func TestDialPlainOnlyForHostnames(t *testing.T) {
 		t.Fatalf("Plain endpoint must dial port 80: %v", errIPPlain)
 	}
 }
+
+func TestWorkerPath(t *testing.T) {
+	if got := WorkerPath("149.154.167.220", 4); got != "/apiws?dc=4&dst=149.154.167.220" {
+		t.Fatalf("path = %q", got)
+	}
+}

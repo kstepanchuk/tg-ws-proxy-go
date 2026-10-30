@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -574,4 +575,25 @@ var autoFrontFirst atomic.Bool
 // preferring) a fronted dial for raw Telegram IPs when cfg.FrontingSNI is set.
 func DialAuto(ctx context.Context, cfg config.Config, targetIP string, domain string) (*Client, error) {
 	return DialWithFronting(ctx, cfg, targetIP, domain, Dial, DialFronted, &autoFrontFirst)
+}
+
+// WorkerPath returns the websocket path understood by the Cloudflare Worker
+// relay script from upstream docs/CfWorker.md.
+func WorkerPath(dstIP string, dc int) string {
+	q := url.Values{}
+	q.Set("dst", dstIP)
+	q.Set("dc", strconv.Itoa(dc))
+	return "/apiws?" + q.Encode()
+}
+
+// DialWorker opens a websocket to a Cloudflare Worker that relays raw TCP to
+// dstIP:443. It honours cfg.CFNoSecure like any other Cloudflare host.
+func DialWorker(ctx context.Context, cfg config.Config, workerDomain, dstIP string, dc int) (*Client, error) {
+	cfg.ConnectWSPath = WorkerPath(dstIP, dc)
+	return DialEndpoint(ctx, cfg, WSEndpoint{
+		DialHost: workerDomain,
+		TLSHost:  workerDomain,
+		HTTPHost: workerDomain,
+		Plain:    cfg.CFNoSecure,
+	})
 }

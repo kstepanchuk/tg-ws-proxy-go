@@ -90,7 +90,8 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.DurationVar(&cfg.DialTimeout, "dial-timeout", cfg.DialTimeout, "TCP dial timeout")
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
-	var cfDomainFlag string
+	var cfDomainFlag, cfWorkerFlag string
+	fs.StringVar(&cfWorkerFlag, "cf-worker-domain", "", "Cloudflare Worker domain(s), comma separated, used as a last-resort relay (see upstream docs/CfWorker.md)")
 	fs.BoolVar(&cfg.CFNoSecure, "no-secure", cfg.CFNoSecure, "connect to Cloudflare hosts on port 80 without TLS (needs SSL mode Flexible; no SNI is sent)")
 	fs.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "write logs to this file (with rotation) instead of stdout")
 	fs.Float64Var(&cfg.LogMaxMB, "log-max-mb", cfg.LogMaxMB, "rotate --log-file after this many MB (0 disables rotation)")
@@ -143,6 +144,18 @@ func parseArgs(args []string) (parsedArgs, error) {
 	}
 	if cfg.LogBackups < 1 {
 		cfg.LogBackups = 1 // rotation needs at least one backup to bound the size
+	}
+	if cfWorkerFlag != "" {
+		for _, d := range strings.Split(cfWorkerFlag, ",") {
+			d = strings.TrimSpace(d)
+			if d == "" {
+				continue
+			}
+			if !isValidDomain(d) {
+				return parsedArgs{}, fmt.Errorf("invalid --cf-worker-domain value: %q", d)
+			}
+			cfg.CFWorkerDomains = append(cfg.CFWorkerDomains, d)
+		}
 	}
 	if !isValidHostLabel(cfPrefix) {
 		return parsedArgs{}, fmt.Errorf("invalid --cf-prefix value: %q", cfPrefix)
