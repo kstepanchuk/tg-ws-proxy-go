@@ -61,6 +61,7 @@ func TestHasCloudflareRoutesRequiresFlagAndDomains(t *testing.T) {
 
 	cfg = config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.CFDomains = []string{"cf.example.com"}
 	srv = newTestServer(t, cfg)
 	if !srv.hasCloudflareRoutes() {
@@ -178,6 +179,7 @@ var _ io.Reader = (*scriptedConn)(nil)
 func TestDialCloudflareWSSucceedsOnFirstAvailableDomain(t *testing.T) {
 	cfg := config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.CFDomains = []string{"fail.example.com", "ok.example.com"}
 	srv := newTestServer(t, cfg)
 
@@ -205,6 +207,7 @@ func TestDialCloudflareWSSucceedsOnFirstAvailableDomain(t *testing.T) {
 func TestDialCloudflareWSReturnsErrorWhenAllDomainsFail(t *testing.T) {
 	cfg := config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.CFDomains = []string{"a.example.com", "b.example.com"}
 	srv := newTestServer(t, cfg)
 
@@ -258,6 +261,7 @@ func TestConnectWebsocketRelayDirectSucceeds(t *testing.T) {
 func TestConnectWebsocketRelayFallsBackToCloudflare(t *testing.T) {
 	cfg := config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.CFDomains = []string{"cf.example.com"}
 	srv := newTestServer(t, cfg)
 

@@ -357,6 +357,16 @@ func (s *MTServer) dialCloudflareWS(ctx context.Context, dc int) (*wsbridge.Clie
 		if s.cfg.Verbose {
 			s.agg.Printf("mtproto: CF dial dc=%d → %s", dc, config.MaskCFDomainForLog(cfHost))
 		}
+		// Prefer a pre-opened Cloudflare websocket (saves TCP+TLS+WS round
+		// trips); the pool key is the Cloudflare host, which encodes the DC.
+		if s.pool != nil {
+			s.pool.SetDialFunc(s.wsDialFunc)
+			if ws, ok := s.pool.Get(dc, false, cfHost, []string{cfHost}); ok {
+				s.stats.recordPoolHit(dc)
+				return ws, nil
+			}
+			s.stats.recordPoolMiss(dc)
+		}
 		ws, err := s.wsDialFunc(ctx, s.cfg, cfHost, cfHost)
 		if err == nil {
 			if s.cfg.Verbose {
