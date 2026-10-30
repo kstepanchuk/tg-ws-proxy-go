@@ -81,6 +81,10 @@ func DialEndpoint(ctx context.Context, cfg config.Config, ep WSEndpoint) (*Clien
 		InsecureSkipVerify: true,
 		MinVersion:         tls.VersionTLS12,
 		NextProtos:         []string{"http/1.1"},
+		// Upstream v1.11.3: the post-quantum X25519MLKEM768 key share makes the
+		// ClientHello large enough to be dropped by some DPI, so offer only
+		// classical groups.
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384},
 	})
 	releaseDeadline := bindConnToContext(ctx, tlsConn, cfg.DialTimeout)
 	defer releaseDeadline()
