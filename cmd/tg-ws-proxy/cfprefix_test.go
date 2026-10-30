@@ -22,3 +22,16 @@ func TestParseArgsCFPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestParseArgsLogFlags(t *testing.T) {
+	pa, err := parseArgs([]string{"-log-file", "x.log", "-log-max-mb", "2.5", "-log-backups", "0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pa.cfg.LogFile != "x.log" || pa.cfg.LogMaxMB != 2.5 || pa.cfg.LogBackups != 1 {
+		t.Fatalf("log cfg: %+v", pa.cfg)
+	}
+	if _, err := parseArgs([]string{"-log-max-mb", "-1"}); err == nil {
+		t.Fatal("negative --log-max-mb accepted")
+	}
+}

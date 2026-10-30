@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"unicode"
 
 	"tg-ws-proxy/internal/config"
+	"tg-ws-proxy/internal/logrotate"
 	"tg-ws-proxy/internal/mtpserver"
 	"tg-ws-proxy/internal/release"
 	"tg-ws-proxy/internal/socks5"
@@ -89,6 +91,9 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
 	var cfDomainFlag string
+	fs.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "write logs to this file (with rotation) instead of stdout")
+	fs.Float64Var(&cfg.LogMaxMB, "log-max-mb", cfg.LogMaxMB, "rotate --log-file after this many MB (0 disables rotation)")
+	fs.IntVar(&cfg.LogBackups, "log-backups", cfg.LogBackups, "rotated log files to keep (at least 1)")
 	cfPrefix := telegram.CFHostPrefix
 	fs.StringVar(&cfPrefix, "cf-prefix", cfPrefix, "sub-domain label before the DC number for Cloudflare hosts (<prefix><dc>.<domain>); change it if the default \"kws\" SNI is filtered by the ISP")
 	fs.BoolVar(&cfg.UseCFProxy, "cf-proxy", cfg.UseCFProxy, "enable Cloudflare proxy mode for websocket routing")
@@ -131,6 +136,12 @@ func parseArgs(args []string) (parsedArgs, error) {
 	}
 	if cfg.PoolRefillDelay < 0 {
 		return parsedArgs{}, fmt.Errorf("--pool-refill-delay must be >= 0")
+	}
+	if cfg.LogMaxMB < 0 {
+		return parsedArgs{}, fmt.Errorf("--log-max-mb must be >= 0")
+	}
+	if cfg.LogBackups < 1 {
+		cfg.LogBackups = 1 // rotation needs at least one backup to bound the size
 	}
 	if !isValidHostLabel(cfPrefix) {
 		return parsedArgs{}, fmt.Errorf("invalid --cf-prefix value: %q", cfPrefix)
@@ -434,7 +445,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logger := log.New(os.Stdout, "tg-ws-proxy ", log.LstdFlags)
+	var logOut io.Writer = os.Stdout
+	if pa.cfg.LogFile != "" {
+		lw, err := logrotate.New(pa.cfg.LogFile, int64(pa.cfg.LogMaxMB*1024*1024), pa.cfg.LogBackups)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot open log file: %v\n", err)
+			os.Exit(1)
+		}
+		defer lw.Close()
+		logOut = lw
+	}
+	logger := log.New(logOut, "tg-ws-proxy ", log.LstdFlags)
 	logger.Printf("binary path: %s", currentBinaryPath())
 	logger.Printf("%s", startupSummary(pa))
 
