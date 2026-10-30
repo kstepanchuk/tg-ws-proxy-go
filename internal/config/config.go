@@ -37,6 +37,8 @@ type Config struct {
 	// FrontingSNI is the TLS SNI used for fronted websocket dials straight to
 	// Telegram DC IPs ("" disables fronting).
 	FrontingSNI string
+	// CFNoSecure connects to Cloudflare hosts on port 80 without TLS.
+	CFNoSecure bool
 	// Log file with size-based rotation ("" logs to stdout).
 	LogFile         string
 	LogMaxMB        float64

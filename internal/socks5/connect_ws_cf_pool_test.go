@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,12 +20,7 @@ func TestConnectWSCFUsesPool(t *testing.T) {
 	cfg.PoolRefillDelay = 0
 	srv := NewServer(cfg, log.New(io.Discard, "", 0))
 
-	var mu sync.Mutex
-	dials := map[string]int{}
 	srv.wsDialFunc = func(ctx context.Context, cfg config.Config, targetIP string, domain string) (*wsbridge.Client, error) {
-		mu.Lock()
-		dials[targetIP]++
-		mu.Unlock()
 		clientConn, peerConn := net.Pipe()
 		t.Cleanup(func() { _ = peerConn.Close(); _ = clientConn.Close() })
 		return wsbridge.NewClient(clientConn), nil
@@ -39,26 +33,20 @@ func TestConnectWSCFUsesPool(t *testing.T) {
 		t.Fatalf("first connect: ws=%v err=%v", ws, err)
 	}
 
-	// Wait for the background refill to fill the bucket.
-	deadline := time.Now().Add(2 * time.Second)
+	// The background refill fills the bucket asynchronously; keep asking until a
+	// pooled connection is handed out (dials are counted before they are stored,
+	// so counting dials alone would race with the adoption).
+	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		mu.Lock()
-		n := dials["kws2.example.com"]
-		mu.Unlock()
-		if n >= 3 { // 1 direct + 2 pooled
-			break
+		next, err := srv.connectWSCF(context.Background(), 2, false, domains)
+		if err != nil || next == nil {
+			t.Fatalf("connect: ws=%v err=%v", next, err)
+		}
+		_ = next.Close()
+		if srv.stats.poolHits.Load() >= 1 {
+			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-
-	mu.Lock()
-	before := dials["kws2.example.com"]
-	mu.Unlock()
-	ws2, err := srv.connectWSCF(context.Background(), 2, false, domains)
-	if err != nil || ws2 == nil {
-		t.Fatalf("second connect: ws=%v err=%v", ws2, err)
-	}
-	if hits := srv.stats.poolHits.Load(); hits < 1 {
-		t.Fatalf("expected a pool hit, got %d (dials before=%d)", hits, before)
-	}
+	t.Fatal("expected a pool hit from a pre-opened Cloudflare websocket")
 }

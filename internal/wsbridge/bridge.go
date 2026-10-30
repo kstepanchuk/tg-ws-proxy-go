@@ -60,6 +60,9 @@ type WSEndpoint struct {
 	DialHost string
 	TLSHost  string
 	HTTPHost string
+	// Plain dials port 80 without TLS (Cloudflare "Flexible" mode): no SNI is
+	// ever sent, so SNI-based filters cannot match.
+	Plain bool
 }
 
 func NewClient(conn net.Conn) *Client {
@@ -70,32 +73,41 @@ func NewClient(conn net.Conn) *Client {
 }
 
 func DialEndpoint(ctx context.Context, cfg config.Config, ep WSEndpoint) (*Client, error) {
-	addr := net.JoinHostPort(ep.DialHost, "443")
+	port := "443"
+	if ep.Plain {
+		port = "80"
+	}
+	addr := net.JoinHostPort(ep.DialHost, port)
 	dialer := &net.Dialer{Timeout: cfg.DialTimeout}
 	rawConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
-	tlsConn := tls.Client(rawConn, &tls.Config{
-		ServerName:         ep.TLSHost,
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS12,
-		NextProtos:         []string{"http/1.1"},
-		// Upstream v1.11.3: the post-quantum X25519MLKEM768 key share makes the
-		// ClientHello large enough to be dropped by some DPI, so offer only
-		// classical groups.
-		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384},
-	})
-	releaseDeadline := bindConnToContext(ctx, tlsConn, cfg.DialTimeout)
+	var conn net.Conn = rawConn
+	if !ep.Plain {
+		conn = tls.Client(rawConn, &tls.Config{
+			ServerName:         ep.TLSHost,
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+			NextProtos:         []string{"http/1.1"},
+			// Upstream v1.11.3: the post-quantum X25519MLKEM768 key share makes the
+			// ClientHello large enough to be dropped by some DPI, so offer only
+			// classical groups.
+			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384},
+		})
+	}
+	releaseDeadline := bindConnToContext(ctx, conn, cfg.DialTimeout)
 	defer releaseDeadline()
 
-	if err := tlsConn.Handshake(); err != nil {
-		_ = tlsConn.Close()
-		return nil, err
+	if tc, ok := conn.(*tls.Conn); ok {
+		if err := tc.Handshake(); err != nil {
+			_ = tc.Close()
+			return nil, err
+		}
 	}
 
-	client := NewClient(tlsConn)
+	client := NewClient(conn)
 
 	if err := client.handshake(ep.HTTPHost, cfg.ConnectWSPath); err != nil {
 		_ = client.Close()
@@ -109,6 +121,9 @@ func Dial(ctx context.Context, cfg config.Config, targetIP string, domain string
 		DialHost: targetIP,
 		TLSHost:  domain,
 		HTTPHost: domain,
+		// --no-secure only affects hostname (Cloudflare) targets, never raw
+		// Telegram IPs.
+		Plain: cfg.CFNoSecure && net.ParseIP(targetIP) == nil,
 	})
 }
 

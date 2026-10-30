@@ -35,3 +35,14 @@ func TestParseArgsLogFlags(t *testing.T) {
 		t.Fatal("negative --log-max-mb accepted")
 	}
 }
+
+func TestParseArgsNoSecure(t *testing.T) {
+	pa, err := parseArgs([]string{"-no-secure"})
+	if err != nil || !pa.cfg.CFNoSecure {
+		t.Fatalf("no-secure not parsed: %v %+v", err, pa.cfg.CFNoSecure)
+	}
+	pa, _ = parseArgs(nil)
+	if pa.cfg.CFNoSecure {
+		t.Fatal("no-secure must default to off")
+	}
+}
