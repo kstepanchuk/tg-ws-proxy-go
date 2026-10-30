@@ -114,11 +114,16 @@ func WSDomains(dc int, isMedia bool) []string {
 	return []string{"kws" + itoa(dc) + ".web.telegram.org", "kws" + itoa(dc) + "-1.web.telegram.org"}
 }
 
+// CFHostPrefix is the sub-domain label placed before the DC number for
+// Cloudflare-proxied websocket hosts (<prefix><dc>.<domain>). Some ISPs filter
+// TLS SNI by the "kws" pattern, so it can be changed with --cf-prefix.
+var CFHostPrefix = "kws"
+
 func CFWSDomain(baseDomain string, dc int) string {
 	if dc < 0 {
 		dc = -dc
 	}
-	return "kws" + itoa(dc) + "." + baseDomain
+	return CFHostPrefix + itoa(dc) + "." + baseDomain
 }
 
 func CFWSDomains(baseDomain string, dc int) []string {

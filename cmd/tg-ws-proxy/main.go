@@ -88,6 +88,8 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
 	var cfDomainFlag string
+	cfPrefix := telegram.CFHostPrefix
+	fs.StringVar(&cfPrefix, "cf-prefix", cfPrefix, "sub-domain label before the DC number for Cloudflare hosts (<prefix><dc>.<domain>); change it if the default \"kws\" SNI is filtered by the ISP")
 	fs.BoolVar(&cfg.UseCFProxy, "cf-proxy", cfg.UseCFProxy, "enable Cloudflare proxy mode for websocket routing")
 	fs.BoolVar(&cfg.UseCFProxyFirst, "cf-proxy-first", cfg.UseCFProxyFirst, "try Cloudflare websocket routing before direct Telegram websocket routing")
 	fs.BoolVar(&cfg.UseCFBalance, "cf-balance", cfg.UseCFBalance, "round-robin across multiple Cloudflare websocket domains while preserving fallback order")
@@ -129,6 +131,10 @@ func parseArgs(args []string) (parsedArgs, error) {
 	if cfg.PoolRefillDelay < 0 {
 		return parsedArgs{}, fmt.Errorf("--pool-refill-delay must be >= 0")
 	}
+	if !isValidHostLabel(cfPrefix) {
+		return parsedArgs{}, fmt.Errorf("invalid --cf-prefix value: %q", cfPrefix)
+	}
+	telegram.CFHostPrefix = cfPrefix
 	if cfDomainFlag != "" {
 		parts := strings.Split(cfDomainFlag, ",")
 		domains := make([]string, 0, len(parts))
@@ -461,4 +467,19 @@ func main() {
 	if err := srv.Run(ctx); err != nil {
 		logger.Fatalf("server stopped with error: %v", err)
 	}
+}
+
+// isValidHostLabel reports whether s is usable as the leading part of a DNS
+// label: 1-50 chars of [a-z0-9-], not starting or ending with a hyphen.
+func isValidHostLabel(s string) bool {
+	if s == "" || len(s) > 50 || s[0] == '-' || s[len(s)-1] == '-' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
