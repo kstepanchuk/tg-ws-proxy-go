@@ -83,7 +83,7 @@ func NewServer(cfg config.Config, logger *log.Logger) *Server {
 			failed:    make(map[string]int),
 			connected: make(map[string]int),
 		},
-		wsDialFunc: wsbridge.Dial,
+		wsDialFunc: wsbridge.DialAuto,
 		cfBalancer: &cfbalance.Balancer{},
 	}
 	if srv.pool != nil {

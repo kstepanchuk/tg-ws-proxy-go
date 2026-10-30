@@ -42,7 +42,7 @@ func NewMTServer(cfg config.Config, secret []byte, logger *log.Logger) *MTServer
 		stats:          newStatsCollector(),
 		routeCooldowns: newRouteCooldowns(30*time.Second, 60*time.Second, 5*time.Minute),
 		pool:           wsbridge.NewPool(cfg),
-		wsDialFunc:     wsbridge.Dial,
+		wsDialFunc:     wsbridge.DialAuto,
 		cfBalancer:     &cfbalance.Balancer{},
 	}
 	if srv.pool != nil {

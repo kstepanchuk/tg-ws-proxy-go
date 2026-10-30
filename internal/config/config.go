@@ -34,6 +34,9 @@ type Config struct {
 	PoolSize        int
 	PoolMaxAge      time.Duration
 	PoolRefillDelay time.Duration
+	// FrontingSNI is the TLS SNI used for fronted websocket dials straight to
+	// Telegram DC IPs ("" disables fronting).
+	FrontingSNI     string
 	DialTimeout     time.Duration
 	InitTimeout     time.Duration
 	ConnectWSPath   string
@@ -64,6 +67,7 @@ func Default() Config {
 		PoolSize:        4,
 		PoolMaxAge:      55 * time.Second,
 		PoolRefillDelay: 250 * time.Millisecond,
+		FrontingSNI:     "sprinthost.ru",
 		DialTimeout:     10 * time.Second,
 		InitTimeout:     15 * time.Second,
 		ConnectWSPath:   "/apiws",

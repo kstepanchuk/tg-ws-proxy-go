@@ -14,6 +14,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"tg-ws-proxy/internal/config"
@@ -494,4 +495,68 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// DialFronted opens a websocket to targetIP with a TLS SNI that differs from
+// the HTTP Host header (domain fronting). Telegram's own endpoints ignore the
+// SNI, so a neutral name can slip past SNI-based filters. It is only
+// meaningful for raw IP targets, never for Cloudflare hosts.
+func DialFronted(ctx context.Context, cfg config.Config, targetIP string, domain string) (*Client, error) {
+	return DialEndpoint(ctx, cfg, WSEndpoint{
+		DialHost: targetIP,
+		TLSHost:  cfg.FrontingSNI,
+		HTTPHost: domain,
+	})
+}
+
+// DialWithFronting dials normally and, for raw IP targets with a configured
+// FrontingSNI, falls back to a fronted dial (or tries it first when the last
+// successful dial was fronted). The preference is remembered in *frontFirst,
+// mirroring upstream's try_fronting_first.
+func DialWithFronting(ctx context.Context, cfg config.Config, targetIP, domain string, dial, dialFront DialFunc, frontFirst *atomic.Bool) (*Client, error) {
+	if dial == nil {
+		dial = Dial
+	}
+	if dialFront == nil {
+		dialFront = DialFronted
+	}
+	if cfg.FrontingSNI == "" || net.ParseIP(targetIP) == nil {
+		return dial(ctx, cfg, targetIP, domain)
+	}
+
+	modes := [2]bool{false, true}
+	if frontFirst != nil && frontFirst.Load() {
+		modes = [2]bool{true, false}
+	}
+	var lastErr error
+	for _, fronted := range modes {
+		var (
+			client *Client
+			err    error
+		)
+		if fronted {
+			client, err = dialFront(ctx, cfg, targetIP, domain)
+		} else {
+			client, err = dial(ctx, cfg, targetIP, domain)
+		}
+		if err == nil {
+			if frontFirst != nil {
+				frontFirst.Store(fronted)
+			}
+			return client, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, lastErr
+}
+
+var autoFrontFirst atomic.Bool
+
+// DialAuto is the default dialer: a plain dial, falling back to (and then
+// preferring) a fronted dial for raw Telegram IPs when cfg.FrontingSNI is set.
+func DialAuto(ctx context.Context, cfg config.Config, targetIP string, domain string) (*Client, error) {
+	return DialWithFronting(ctx, cfg, targetIP, domain, Dial, DialFronted, &autoFrontFirst)
 }

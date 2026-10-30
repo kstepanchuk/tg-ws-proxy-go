@@ -84,6 +84,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.IntVar(&cfg.PoolSize, "pool-size", cfg.PoolSize, "number of pre-opened idle WebSocket connections per active DC bucket")
 	fs.DurationVar(&cfg.PoolMaxAge, "pool-max-age", cfg.PoolMaxAge, "maximum age of an idle pooled WebSocket connection before it is discarded")
 	fs.DurationVar(&cfg.PoolRefillDelay, "pool-refill-delay", cfg.PoolRefillDelay, "delay between opening pooled WebSocket connections while refilling a bucket")
+	fs.StringVar(&cfg.FrontingSNI, "fronting-sni", cfg.FrontingSNI, "TLS SNI for fronted websocket dials to Telegram DC IPs (empty disables fronting)")
 	fs.DurationVar(&cfg.DialTimeout, "dial-timeout", cfg.DialTimeout, "TCP dial timeout")
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
