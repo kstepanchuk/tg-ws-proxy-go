@@ -1,9 +1,13 @@
-# TG WS Proxy Go
+# TG WS Proxy Go (fork)
 
-[![CI](https://github.com/d0mhate/-tg-ws-proxy-Manager-go/actions/workflows/ci.yml/badge.svg)](https://github.com/d0mhate/-tg-ws-proxy-Manager-go/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/d0mhate/-tg-ws-proxy-Manager-go)](https://github.com/d0mhate/-tg-ws-proxy-Manager-go/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/d0mhate/-tg-ws-proxy-Manager-go/total)](https://github.com/d0mhate/-tg-ws-proxy-Manager-go/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/d0mhate/-tg-ws-proxy-Manager-go)](https://goreportcard.com/report/github.com/d0mhate/-tg-ws-proxy-Manager-go)
+> **Это форк** [d0mhate/-tg-ws-proxy-Manager-go](https://github.com/d0mhate/-tg-ws-proxy-Manager-go),
+> который сам является Go-портом [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy) (MIT).
+> Здесь переносятся исправления из оригинала (v1.5-v1.11.3) и добавляются правки под
+> российские сети. Список изменений - в [CHANGES.md](CHANGES.md).
+> Скрипт-менеджер `tg-ws-proxy-go.sh` по умолчанию по-прежнему скачивает релизы
+> исходного репозитория (`REPO_OWNER` в `lib/globals.sh`).
+
+
 ![Go Version](https://img.shields.io/badge/go-1.26-00ADD8)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CGO](https://img.shields.io/badge/CGO__enabled-0-brightgreen)
