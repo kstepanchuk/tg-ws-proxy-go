@@ -296,6 +296,13 @@ func (s *Server) connectWSCF(ctx context.Context, dc int, isMedia bool, domains 
 	var lastErr error
 	for _, domain := range domains {
 		cfHost := telegram.CFWSDomain(domain, dc)
+		// Reuse a pre-opened Cloudflare websocket when one is idle: it saves the
+		// TCP + TLS + websocket upgrade round trips for every new Telegram
+		// connection. The pool key is the Cloudflare host (which already
+		// encodes the DC), so it never collides with direct Telegram buckets.
+		if ws, ok := s.tryPooledWebsocket(dc, false, cfHost, []string{cfHost}); ok {
+			return ws, nil
+		}
 		s.debugf("ws cf attempt: dc=%d media=%v cf_host=%s", dc, isMedia, cfHost)
 		dialCfg := s.cfg
 		ws, err := s.wsDialFunc(ctx, dialCfg, cfHost, cfHost)

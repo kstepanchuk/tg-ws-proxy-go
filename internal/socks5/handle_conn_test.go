@@ -510,6 +510,7 @@ func TestHandleConnAdditionalTelegramCallHostsUseKnownDCMappings(t *testing.T) {
 
 		cfg := config.Default()
 		cfg.UseCFProxy = true
+		cfg.PoolSize = 0 // routing test: no background pool refills
 		cfg.CFDomains = []string{"example.com"}
 
 		srv := NewServer(cfg, log.New(io.Discard, "", 0))
@@ -545,6 +546,7 @@ func TestHandleConnAdditionalTelegramCallHostsUseKnownDCMappings(t *testing.T) {
 func TestHandleConnCFFallbackTriedBeforeTCP(t *testing.T) {
 	cfg := config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.CFDomains = []string{"example.com"}
 
 	var order []string
@@ -649,6 +651,7 @@ func TestHandleConnCFRouteForNonWhitelistDCs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := config.Default()
 			cfg.UseCFProxy = true
+			cfg.PoolSize = 0 // routing test: no background pool refills
 			cfg.CFDomains = []string{"example.com"}
 			if tc.dcIPs != nil {
 				cfg.DCIPs = tc.dcIPs
@@ -720,6 +723,7 @@ func TestHandleConnCFFallbackUsesDCIPMappingTargetForTCPWhenCFFails(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := config.Default()
 			cfg.UseCFProxy = true
+			cfg.PoolSize = 0 // routing test: no background pool refills
 			cfg.CFDomains = []string{"example.com"}
 			if tc.dcIPs != nil {
 				cfg.DCIPs = tc.dcIPs
@@ -768,6 +772,7 @@ func TestHandleConnCFFallbackUsesDCIPMappingTargetForTCPWhenCFFails(t *testing.T
 func TestHandleConnCFPreferredBeforeTelegramWS(t *testing.T) {
 	cfg := config.Default()
 	cfg.UseCFProxy = true
+	cfg.PoolSize = 0 // routing test: no background pool refills
 	cfg.UseCFProxyFirst = true
 	cfg.CFDomains = []string{"example.com"}
 
