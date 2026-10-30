@@ -13,6 +13,7 @@ import (
 
 	"tg-ws-proxy/internal/cfbalance"
 	"tg-ws-proxy/internal/config"
+	"tg-ws-proxy/internal/tcpbackoff"
 	"tg-ws-proxy/internal/telegram"
 	"tg-ws-proxy/internal/wsbridge"
 )
@@ -39,6 +40,10 @@ type Server struct {
 	cfg    config.Config
 	logger *log.Logger
 	pool   *wsbridge.Pool
+	// tcpBackoff throttles direct TCP dials to Telegram IPs after failures.
+	tcpBackoff *tcpbackoff.Tracker
+	// dialContext opens outbound TCP connections (replaced in tests).
+	dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	routeState   *wsRouteState
 	stats        *runtimeStats
@@ -60,6 +65,7 @@ func NewServer(cfg config.Config, logger *log.Logger) *Server {
 		cfg:        cfg,
 		logger:     logger,
 		pool:       wsbridge.NewPool(cfg),
+		tcpBackoff: tcpbackoff.New(),
 		routeState: newWSRouteState(wsFailCooldown),
 		stats: &runtimeStats{
 			wsByDC:          make(map[int]int),
@@ -345,9 +351,32 @@ func (s *Server) proxyTCPWithInit(ctx context.Context, conn net.Conn, host strin
 	return bridgeTCP(ctx, conn, upstream)
 }
 
+// errTCPBackoff is returned instead of dialing a Telegram IP that recently
+// failed (or is already being dialed), so a blocked target does not cost a full
+// dial timeout on every connection.
+var errTCPBackoff = errors.New("tcp fallback skipped: target is backing off")
+
 func (s *Server) dialTCP(ctx context.Context, host string, port int) (net.Conn, error) {
-	dialer := &net.Dialer{Timeout: s.cfg.DialTimeout}
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	throttled := telegram.IsTelegramIP(host)
+	if throttled && !s.tcpBackoff.Begin(addr) {
+		return nil, errTCPBackoff
+	}
+	dial := s.dialContext
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: s.cfg.DialTimeout}).DialContext
+	}
+	conn, err := dial(ctx, "tcp", addr)
+	if throttled {
+		// A canceled/expired caller context says nothing about the target.
+		failure := err
+		if ctx.Err() != nil {
+			failure = nil
+		}
+		if delay := s.tcpBackoff.End(addr, failure); delay > 0 {
+			s.debugf("tcp fallback to %s failed: %v; retry in %s", addr, err, delay)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

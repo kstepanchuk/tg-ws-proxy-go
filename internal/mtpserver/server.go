@@ -14,6 +14,7 @@ import (
 	"tg-ws-proxy/internal/config"
 	"tg-ws-proxy/internal/faketls"
 	"tg-ws-proxy/internal/mtproto"
+	"tg-ws-proxy/internal/tcpbackoff"
 	"tg-ws-proxy/internal/wsbridge"
 )
 
@@ -29,6 +30,7 @@ type MTServer struct {
 	pool           *wsbridge.Pool
 	stats          *statsCollector
 	routeCooldowns *routeCooldowns
+	tcpBackoff     *tcpbackoff.Tracker
 	wsDialFunc     wsbridge.DialFunc
 	cfBalancer     *cfbalance.Balancer
 }
@@ -42,6 +44,7 @@ func NewMTServer(cfg config.Config, secret []byte, logger *log.Logger) *MTServer
 		stats:          newStatsCollector(),
 		routeCooldowns: newRouteCooldowns(30*time.Second, 60*time.Second, 5*time.Minute),
 		pool:           wsbridge.NewPool(cfg),
+		tcpBackoff:     tcpbackoff.New(),
 		wsDialFunc:     wsbridge.DialAuto,
 		cfBalancer:     &cfbalance.Balancer{},
 	}

@@ -16,6 +16,9 @@ import (
 
 const telegramTCPPort = 443
 
+// errTCPBackoff means the target failed recently and is not retried yet.
+var errTCPBackoff = errors.New("target is backing off")
+
 func (s *MTServer) tcpFallbackTargetIP(dc int, routes []directRouteCandidate) string {
 	if ip := s.cfg.DCIPs[dc]; ip != "" {
 		return ip
@@ -46,7 +49,13 @@ func (s *MTServer) dialTCPFallback(ctx context.Context, targetIP string, relayIn
 	dialCtx, cancel := context.WithTimeout(ctx, s.cfg.DialTimeout)
 	defer cancel()
 
+	if !s.tcpBackoff.Begin(addr) {
+		return nil, fmt.Errorf("tcp fallback dial %s: %w", addr, errTCPBackoff)
+	}
 	tcpConn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	if delay := s.tcpBackoff.End(addr, err); delay > 0 && s.cfg.Verbose {
+		s.agg.Printf("mtproto: tcp fallback to %s failed: %v; retry in %s", addr, err, delay)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("tcp fallback dial %s: %w", addr, err)
 	}
