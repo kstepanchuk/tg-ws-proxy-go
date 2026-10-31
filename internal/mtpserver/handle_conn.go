@@ -107,14 +107,14 @@ func (s *MTServer) acceptClientDataConn(conn net.Conn, key []byte) (net.Conn, bo
 		return conn, true
 	}
 
-	clientRandom := faketls.AcceptClientHello(conn, key)
-	if clientRandom == nil {
+	hello := faketls.AcceptClientHelloFull(conn, key)
+	if hello == nil {
 		if s.cfg.Verbose {
 			s.agg.Printf("mtproto: FakeTLS ClientHello invalid from %s", conn.RemoteAddr())
 		}
 		return nil, false
 	}
-	if err := faketls.SendFakeServerHello(conn, key, clientRandom); err != nil {
+	if err := faketls.SendServerHello(conn, key, hello); err != nil {
 		if s.cfg.Verbose {
 			s.agg.Printf("mtproto: FakeTLS ServerHello send error: %v", err)
 		}

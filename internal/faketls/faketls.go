@@ -287,6 +287,15 @@ func appendU16(b []byte, v uint16) []byte {
 // read a ClientHello, validate its hmac, and return client random on success.
 // random[28:32] contains a timestamp and must be within 300 seconds.
 func AcceptClientHello(r io.Reader, secret []byte) []byte {
+	if h := AcceptClientHelloFull(r, secret); h != nil {
+		return h.Random
+	}
+	return nil
+}
+
+// AcceptClientHelloFull validates a ClientHello like AcceptClientHello and also
+// returns the session id and the offered cipher suites / key shares.
+func AcceptClientHelloFull(r io.Reader, secret []byte) *Hello {
 	hdr := make([]byte, 5)
 	if _, err := io.ReadFull(r, hdr); err != nil {
 		return nil
@@ -307,6 +316,7 @@ func AcceptClientHello(r io.Reader, secret []byte) []byte {
 	record := make([]byte, 5+payLen)
 	copy(record, hdr)
 	copy(record[5:], payload)
+	original := append([]byte(nil), record...)
 
 	if len(record) < digestPos+digestLen {
 		return nil
@@ -340,7 +350,8 @@ func AcceptClientHello(r io.Reader, secret []byte) []byte {
 		return nil
 	}
 
-	return append([]byte(nil), saved[:]...)
+	sessionID, info, _ := ParseClientHello(original)
+	return &Hello{Random: append([]byte(nil), saved[:]...), SessionID: sessionID, Info: info}
 }
 
 // send a minimal fake tls 1.2 server handshake:
@@ -361,10 +372,10 @@ func SendFakeServerHello(w io.Writer, secret, clientRandom []byte) error {
 	var body []byte
 	body = append(body, version12[:]...)     // server_version = TLS 1.2
 	body = append(body, make([]byte, 32)...) // random: zeroed, filled by sign below
-	body = append(body, 0x00)               // session_id_length = 0
-	body = append(body, 0xc0, 0x2f)         // ECDHE_RSA_WITH_AES_128_GCM_SHA256
-	body = append(body, 0x00)               // compression: null
-	body = appendU16(body, 0)               // no extensions
+	body = append(body, 0x00)                // session_id_length = 0
+	body = append(body, 0xc0, 0x2f)          // ECDHE_RSA_WITH_AES_128_GCM_SHA256
+	body = append(body, 0x00)                // compression: null
+	body = appendU16(body, 0)                // no extensions
 
 	var hs []byte
 	hs = append(hs, 0x02) // HandshakeType: ServerHello

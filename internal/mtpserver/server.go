@@ -91,6 +91,21 @@ func (s *MTServer) Run(ctx context.Context) error {
 	}()
 
 	s.logger.Printf("mtproto proxy listening on %s", addr)
+	if s.isFakeTLS() && len(s.secret) > 17 {
+		// Size the fake ApplicationData record like the masking site does
+		// (upstream #1473). Failure is harmless: a small random size is used.
+		go func(domain string) {
+			pctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			defer cancel()
+			n, err := faketls.ProbeAppDataLen(pctx, domain, "443", 5*time.Second)
+			if err != nil {
+				s.logger.Printf("fake tls profile: cannot probe %s:443: %v (using random record sizes)", domain, err)
+				return
+			}
+			faketls.SetProfiledAppDataLen(n)
+			s.logger.Printf("fake tls profile: %s first encrypted record = %d bytes", domain, n)
+		}(string(s.secret[17:]))
+	}
 	if s.pool != nil {
 		s.pool.Warmup(s.cfg.DCIPs)
 	}
