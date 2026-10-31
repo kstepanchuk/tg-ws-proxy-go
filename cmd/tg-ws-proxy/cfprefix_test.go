@@ -59,3 +59,19 @@ func TestParseArgsCFWorkerDomains(t *testing.T) {
 		t.Fatal("invalid worker domain accepted")
 	}
 }
+
+func TestParseArgsCFLabels(t *testing.T) {
+	old := telegram.CFHostLabels
+	defer func() { telegram.CFHostLabels = old }()
+	if _, err := parseArgs([]string{"-cf-labels", "1=lumen, 2=orbit,203=zephyr"}); err != nil {
+		t.Fatal(err)
+	}
+	if telegram.CFHostLabels[2] != "orbit" || telegram.CFHostLabels[203] != "zephyr" || len(telegram.CFHostLabels) != 3 {
+		t.Fatalf("labels: %v", telegram.CFHostLabels)
+	}
+	for _, bad := range []string{"2", "x=orbit", "2=Bad_Label", "0=a", "2=-a"} {
+		if _, err := parseArgs([]string{"-cf-labels", bad}); err == nil {
+			t.Fatalf("accepted invalid --cf-labels %q", bad)
+		}
+	}
+}

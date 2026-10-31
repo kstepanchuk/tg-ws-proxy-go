@@ -90,7 +90,8 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.DurationVar(&cfg.DialTimeout, "dial-timeout", cfg.DialTimeout, "TCP dial timeout")
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
-	var cfDomainFlag, cfWorkerFlag string
+	var cfDomainFlag, cfWorkerFlag, cfLabelsFlag string
+	fs.StringVar(&cfLabelsFlag, "cf-labels", "", "explicit Cloudflare host label per DC, e.g. 1=lumen,2=orbit,203=zephyr (overrides --cf-prefix for those DCs)")
 	fs.StringVar(&cfWorkerFlag, "cf-worker-domain", "", "Cloudflare Worker domain(s), comma separated, used as a last-resort relay (see upstream docs/CfWorker.md)")
 	fs.BoolVar(&cfg.CFNoSecure, "no-secure", cfg.CFNoSecure, "connect to Cloudflare hosts on port 80 without TLS (needs SSL mode Flexible; no SNI is sent)")
 	fs.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "write logs to this file (with rotation) instead of stdout")
@@ -161,6 +162,11 @@ func parseArgs(args []string) (parsedArgs, error) {
 		return parsedArgs{}, fmt.Errorf("invalid --cf-prefix value: %q", cfPrefix)
 	}
 	telegram.CFHostPrefix = cfPrefix
+	labels, err := parseCFLabels(cfLabelsFlag)
+	if err != nil {
+		return parsedArgs{}, err
+	}
+	telegram.CFHostLabels = labels
 	if cfDomainFlag != "" {
 		parts := strings.Split(cfDomainFlag, ",")
 		domains := make([]string, 0, len(parts))
@@ -518,4 +524,32 @@ func isValidHostLabel(s string) bool {
 		}
 	}
 	return true
+}
+
+// parseCFLabels parses "1=lumen,2=orbit" into a DC -> label map.
+func parseCFLabels(v string) (map[int]string, error) {
+	if strings.TrimSpace(v) == "" {
+		return nil, nil
+	}
+	out := map[int]string{}
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			return nil, fmt.Errorf("invalid --cf-labels entry %q (want DC=label)", part)
+		}
+		dc, err := strconv.Atoi(strings.TrimSpace(kv[0]))
+		if err != nil || dc <= 0 {
+			return nil, fmt.Errorf("invalid DC in --cf-labels entry %q", part)
+		}
+		label := strings.TrimSpace(kv[1])
+		if !isValidHostLabel(label) {
+			return nil, fmt.Errorf("invalid label in --cf-labels entry %q", part)
+		}
+		out[dc] = label
+	}
+	return out, nil
 }
