@@ -46,6 +46,8 @@ var IPToDC = map[string]Endpoint{
 	"149.154.166.121": {DC: 4, IsMedia: true},
 	"149.154.167.118": {DC: 4, IsMedia: true},
 	"149.154.165.111": {DC: 4, IsMedia: true},
+	"149.154.165.96":  {DC: 4, IsMedia: true},
+	"149.154.165.120": {DC: 4, IsMedia: true},
 	IPv4DC5:           {DC: 5, IsMedia: false},
 	"91.108.56.101":   {DC: 5, IsMedia: false},
 	"91.108.56.116":   {DC: 5, IsMedia: false},
@@ -54,6 +56,7 @@ var IPToDC = map[string]Endpoint{
 	"91.108.56.102":   {DC: 5, IsMedia: true},
 	"91.108.56.128":   {DC: 5, IsMedia: true},
 	"91.108.56.151":   {DC: 5, IsMedia: true},
+	"91.108.56.114":   {DC: 5, IsMedia: false},
 	IPv4DC203:         {DC: 203, IsMedia: false},
 }
 
@@ -85,6 +88,24 @@ func IsTelegramIP(ip string) bool {
 	return false
 }
 
+// IPv4Prefixes covers Telegram addresses that are not (yet) listed in IPToDC:
+// Telegram adds media/file front-ends over time, and an unrecognised address
+// would otherwise have no DC and fall into the (often blocked) direct TCP path.
+// Only ranges that are unambiguous are listed; 149.154.167.0/24 mixes DC2 and
+// DC4 and is deliberately left out (the DC comes from the MTProto init there).
+var IPv4Prefixes = []struct {
+	Prefix   string // dotted prefix ending with "."
+	Endpoint Endpoint
+}{
+	{Prefix: "149.154.164.", Endpoint: Endpoint{DC: 4, IsMedia: true}},
+	{Prefix: "149.154.165.", Endpoint: Endpoint{DC: 4, IsMedia: true}},
+	{Prefix: "149.154.166.", Endpoint: Endpoint{DC: 4, IsMedia: true}},
+	{Prefix: "91.108.56.", Endpoint: Endpoint{DC: 5, IsMedia: false}},
+	{Prefix: "91.108.57.", Endpoint: Endpoint{DC: 5, IsMedia: false}},
+	{Prefix: "91.108.58.", Endpoint: Endpoint{DC: 5, IsMedia: false}},
+	{Prefix: "91.108.59.", Endpoint: Endpoint{DC: 5, IsMedia: false}},
+}
+
 func LookupEndpoint(ip string) (Endpoint, bool) {
 	ep, ok := IPToDC[ip]
 	if ok {
@@ -92,7 +113,15 @@ func LookupEndpoint(ip string) (Endpoint, bool) {
 	}
 
 	parsed := net.ParseIP(ip)
-	if parsed == nil || parsed.To4() != nil {
+	if parsed != nil && parsed.To4() != nil {
+		for _, item := range IPv4Prefixes {
+			if strings.HasPrefix(ip, item.Prefix) {
+				return item.Endpoint, true
+			}
+		}
+		return Endpoint{}, false
+	}
+	if parsed == nil {
 		return Endpoint{}, false
 	}
 
