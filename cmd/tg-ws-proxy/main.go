@@ -24,6 +24,7 @@ import (
 	"tg-ws-proxy/internal/release"
 	"tg-ws-proxy/internal/socks5"
 	"tg-ws-proxy/internal/telegram"
+	"tg-ws-proxy/internal/wsbridge"
 )
 
 type dcIPFlags []string
@@ -91,8 +92,9 @@ func parseArgs(args []string) (parsedArgs, error) {
 	fs.DurationVar(&cfg.InitTimeout, "init-timeout", cfg.InitTimeout, "client MTProto init timeout")
 	fs.Var(&dcIPs, "dc-ip", "Target IP for a DC, for example --dc-ip 2:"+telegram.IPv4DC2)
 	var cfDomainFlag, cfWorkerFlag, cfLabelsFlag string
+	fs.BoolVar(&cfg.CFWorkerFirst, "cf-worker-first", cfg.CFWorkerFirst, "try --cf-worker-domain relays before Cloudflare and direct routes")
 	fs.StringVar(&cfLabelsFlag, "cf-labels", "", "Cloudflare host labels per DC, spares after |, e.g. 2=ember|cedar|birch,4=quartz (first is preferred, the rest are failover; overrides --cf-prefix for those DCs)")
-	fs.StringVar(&cfWorkerFlag, "cf-worker-domain", "", "Cloudflare Worker domain(s), comma separated, used as a last-resort relay (see upstream docs/CfWorker.md)")
+	fs.StringVar(&cfWorkerFlag, "cf-worker-domain", "", "relay(s), comma separated, used as a last resort (or first with --cf-worker-first): a Cloudflare Worker host, or a self-hosted ws-relay as ip:port@sni")
 	fs.BoolVar(&cfg.CFNoSecure, "no-secure", cfg.CFNoSecure, "connect to Cloudflare hosts on port 80 without TLS (needs SSL mode Flexible; no SNI is sent)")
 	fs.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "write logs to this file (with rotation) instead of stdout")
 	fs.Float64Var(&cfg.LogMaxMB, "log-max-mb", cfg.LogMaxMB, "rotate --log-file after this many MB (0 disables rotation)")
@@ -152,7 +154,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 			if d == "" {
 				continue
 			}
-			if !isValidDomain(d) {
+			if !isValidWorker(d) {
 				return parsedArgs{}, fmt.Errorf("invalid --cf-worker-domain value: %q", d)
 			}
 			cfg.CFWorkerDomains = append(cfg.CFWorkerDomains, d)
@@ -555,4 +557,20 @@ func parseCFLabels(v string) (map[int][]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// isValidWorker accepts a Worker domain or a self-hosted relay "host[:port]@sni".
+func isValidWorker(v string) bool {
+	dial, sni, isRelay := wsbridge.SplitWorker(v)
+	if !isRelay {
+		return isValidDomain(v)
+	}
+	host := dial
+	if h, p, err := net.SplitHostPort(dial); err == nil {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return false
+		}
+		host = h
+	}
+	return (net.ParseIP(host) != nil || isValidDomain(host)) && isValidDomain(sni)
 }

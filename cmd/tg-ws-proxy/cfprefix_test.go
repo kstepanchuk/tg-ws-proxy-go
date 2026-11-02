@@ -78,3 +78,18 @@ func TestParseArgsCFLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestParseArgsWorkerRelayEntries(t *testing.T) {
+	pa, err := parseArgs([]string{"-cf-worker-first", "-cf-worker-domain", "195.133.35.145:8443@dns.gausdo.ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pa.cfg.CFWorkerFirst || len(pa.cfg.CFWorkerDomains) != 1 {
+		t.Fatalf("cfg: %+v", pa.cfg.CFWorkerDomains)
+	}
+	for _, bad := range []string{"1.2.3.4:99999@x.example.com", "1.2.3.4:8443@not valid", "1.2.3.4:abc@x.example.com", "bad host@x.example.com"} {
+		if _, err := parseArgs([]string{"-cf-worker-domain", bad}); err == nil {
+			t.Fatalf("accepted invalid relay entry %q", bad)
+		}
+	}
+}

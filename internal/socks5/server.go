@@ -275,6 +275,16 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 		return ws, nil
 	}
 
+	if s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
+		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, targetIP); err == nil {
+			s.debugf("[%s] route=websocket primary=relay dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
+			return ws, nil
+		} else {
+			s.stats.recordError("ws_worker_connect", err)
+			lastErr = err
+		}
+	}
+
 	if tryCloudflare && s.cfg.UseCFProxyFirst {
 		if ws, err := tryBridgeCF(); err == nil {
 			s.debugf("[%s] route=websocket primary=cloudflare dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
@@ -301,7 +311,7 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 	}
 
 	// Last resort: a Cloudflare Worker relaying raw TCP to the DC.
-	if len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
+	if !s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
 		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, targetIP); err == nil {
 			s.debugf("[%s] route=websocket fallback=cf-worker dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
 			return ws, nil

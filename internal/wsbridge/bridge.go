@@ -79,6 +79,9 @@ func DialEndpoint(ctx context.Context, cfg config.Config, ep WSEndpoint) (*Clien
 		port = "80"
 	}
 	addr := net.JoinHostPort(ep.DialHost, port)
+	if h, p, err := net.SplitHostPort(ep.DialHost); err == nil && p != "" {
+		addr = net.JoinHostPort(h, p) // explicit host:port wins
+	}
 	dialer := &net.Dialer{Timeout: cfg.DialTimeout}
 	rawConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -586,14 +589,27 @@ func WorkerPath(dstIP string, dc int) string {
 	return "/apiws?" + q.Encode()
 }
 
-// DialWorker opens a websocket to a Cloudflare Worker that relays raw TCP to
-// dstIP:443. It honours cfg.CFNoSecure like any other Cloudflare host.
+// SplitWorker splits a worker entry. "worker.example.workers.dev" is a plain
+// Cloudflare Worker host. "203.0.113.5:8443@dns.example.com" is a self-hosted
+// relay (cmd/ws-relay): connect to the address, present the part after @ as TLS
+// SNI and HTTP Host, always over TLS.
+func SplitWorker(entry string) (dial, sni string, relay bool) {
+	if i := strings.LastIndexByte(entry, '@'); i > 0 && i < len(entry)-1 {
+		return entry[:i], entry[i+1:], true
+	}
+	return entry, entry, false
+}
+
+// DialWorker opens a websocket to a Cloudflare Worker (or ws-relay) that relays
+// raw TCP to dstIP:443. Plain Workers honour cfg.CFNoSecure; self-hosted relays
+// are always TLS.
 func DialWorker(ctx context.Context, cfg config.Config, workerDomain, dstIP string, dc int) (*Client, error) {
+	dial, sni, isRelay := SplitWorker(workerDomain)
 	cfg.ConnectWSPath = WorkerPath(dstIP, dc)
 	return DialEndpoint(ctx, cfg, WSEndpoint{
-		DialHost: workerDomain,
-		TLSHost:  workerDomain,
-		HTTPHost: workerDomain,
-		Plain:    cfg.CFNoSecure,
+		DialHost: dial,
+		TLSHost:  sni,
+		HTTPHost: sni,
+		Plain:    cfg.CFNoSecure && !isRelay,
 	})
 }

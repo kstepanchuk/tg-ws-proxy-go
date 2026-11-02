@@ -42,6 +42,8 @@ type Config struct {
 	// CFWorkerDomains are Cloudflare Worker hosts used as a last-resort relay:
 	// wss://<domain>/apiws?dst=<DC IP>&dc=<n>.
 	CFWorkerDomains []string
+	// CFWorkerFirst tries the worker/relay before Cloudflare and direct routes.
+	CFWorkerFirst bool
 	// Log file with size-based rotation ("" logs to stdout).
 	LogFile         string
 	LogMaxMB        float64

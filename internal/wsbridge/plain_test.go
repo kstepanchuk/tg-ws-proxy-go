@@ -101,3 +101,21 @@ func TestWorkerPath(t *testing.T) {
 		t.Fatalf("path = %q", got)
 	}
 }
+
+func TestSplitWorker(t *testing.T) {
+	for _, tc := range []struct {
+		in, dial, sni string
+		relay         bool
+	}{
+		{"w.example.workers.dev", "w.example.workers.dev", "w.example.workers.dev", false},
+		{"203.0.113.5:8443@dns.example.com", "203.0.113.5:8443", "dns.example.com", true},
+		{"203.0.113.5@dns.example.com", "203.0.113.5", "dns.example.com", true},
+		{"@x", "@x", "@x", false},
+		{"x@", "x@", "x@", false},
+	} {
+		d, s, r := SplitWorker(tc.in)
+		if d != tc.dial || s != tc.sni || r != tc.relay {
+			t.Fatalf("%q -> %q %q %v", tc.in, d, s, r)
+		}
+	}
+}
