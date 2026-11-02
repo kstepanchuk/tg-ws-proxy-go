@@ -21,7 +21,7 @@ func (s *Server) tryPooledWebsocket(dc int, isMedia bool, targetIP string, domai
 	if s.pool == nil {
 		return nil, false
 	}
-	s.pool.SetDialFunc(s.wsDialFunc)
+	s.pool.SetDialFunc(s.trackedDial)
 	if ws, ok := s.pool.Get(dc, isMedia, targetIP, domains); ok {
 		s.stats.incPoolHit()
 		s.debugf("ws pool hit: dc=%d media=%v target=%s", dc, isMedia, targetIP)

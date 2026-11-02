@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"tg-ws-proxy/internal/cfbalance"
+	"tg-ws-proxy/internal/cflabels"
 	"tg-ws-proxy/internal/config"
 	"tg-ws-proxy/internal/tcpbackoff"
 	"tg-ws-proxy/internal/telegram"
@@ -43,6 +44,8 @@ type Server struct {
 	pool   *wsbridge.Pool
 	// tcpBackoff throttles direct TCP dials to Telegram IPs after failures.
 	tcpBackoff *tcpbackoff.Tracker
+	// cfLabels rotates Cloudflare host names away from filtered ones.
+	cfLabels *cflabels.Pool
 	// dialContext opens outbound TCP connections (replaced in tests).
 	dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
@@ -69,6 +72,7 @@ func NewServer(cfg config.Config, logger *log.Logger) *Server {
 		logger:     logger,
 		pool:       wsbridge.NewPool(cfg),
 		tcpBackoff: tcpbackoff.New(),
+		cfLabels:   cflabels.New(),
 		routeState: newWSRouteState(wsFailCooldown),
 		stats: &runtimeStats{
 			wsByDC:          make(map[int]int),
@@ -97,7 +101,7 @@ func NewServer(cfg config.Config, logger *log.Logger) *Server {
 		cfBalancer:       &cfbalance.Balancer{},
 	}
 	if srv.pool != nil {
-		srv.pool.SetDialFunc(srv.wsDialFunc)
+		srv.pool.SetDialFunc(srv.trackedDial)
 	}
 	return srv
 }
@@ -330,25 +334,44 @@ func (s *Server) cfDomainsForConn() []string {
 	return s.cfBalancer.Domains(s.cfg.CFDomains, s.cfg.UseCFBalance)
 }
 
+// trackedDial is wsDialFunc plus label health reporting for Cloudflare hosts
+// (hostname targets). Used by the pool refill and by direct CF dials so both
+// feed the same failover state.
+func (s *Server) trackedDial(ctx context.Context, cfg config.Config, targetIP, domain string) (*wsbridge.Client, error) {
+	ws, err := s.wsDialFunc(ctx, cfg, targetIP, domain)
+	if net.ParseIP(targetIP) == nil && s.cfLabels != nil {
+		if err != nil && ctx.Err() != nil {
+			return ws, err // the caller gave up; that says nothing about the label
+		}
+		if cool := s.cfLabels.Report(targetIP, err); cool > 0 {
+			s.debugf("cf label %s failed (%v); cooling down %s", config.MaskCFDomainForLog(targetIP), err, cool)
+		}
+	}
+	return ws, err
+}
+
 func (s *Server) connectWSCF(ctx context.Context, dc int, isMedia bool, domains []string) (*wsbridge.Client, error) {
 	var lastErr error
 	for _, domain := range domains {
-		cfHost := telegram.CFWSDomain(domain, dc)
-		// Reuse a pre-opened Cloudflare websocket when one is idle: it saves the
-		// TCP + TLS + websocket upgrade round trips for every new Telegram
-		// connection. The pool key is the Cloudflare host (which already
-		// encodes the DC), so it never collides with direct Telegram buckets.
-		if ws, ok := s.tryPooledWebsocket(dc, false, cfHost, []string{cfHost}); ok {
-			return ws, nil
+		for _, cfHost := range s.cfLabels.Hosts(domain, dc) {
+			// Reuse a pre-opened Cloudflare websocket when one is idle: it saves
+			// the TCP + TLS + websocket upgrade round trips for every new
+			// Telegram connection. The pool key is the Cloudflare host (which
+			// already encodes the DC), so it never collides with direct buckets.
+			if ws, ok := s.tryPooledWebsocket(dc, false, cfHost, []string{cfHost}); ok {
+				return ws, nil
+			}
+			s.debugf("ws cf attempt: dc=%d media=%v cf_host=%s", dc, isMedia, cfHost)
+			ws, err := s.trackedDial(ctx, s.cfg, cfHost, cfHost)
+			if err == nil {
+				return ws, nil
+			}
+			s.stats.incWSErrors()
+			lastErr = err
+			if ctx.Err() != nil {
+				return nil, lastErr
+			}
 		}
-		s.debugf("ws cf attempt: dc=%d media=%v cf_host=%s", dc, isMedia, cfHost)
-		dialCfg := s.cfg
-		ws, err := s.wsDialFunc(ctx, dialCfg, cfHost, cfHost)
-		if err == nil {
-			return ws, nil
-		}
-		s.stats.incWSErrors()
-		lastErr = err
 	}
 	return nil, lastErr
 }

@@ -148,18 +148,28 @@ func WSDomains(dc int, isMedia bool) []string {
 // TLS SNI by the "kws" pattern, so it can be changed with --cf-prefix.
 var CFHostPrefix = "kws"
 
-// CFHostLabels overrides the whole host label per DC (<label>.<domain>), for
-// when even "<prefix><dc>" patterns get filtered. Missing DCs use CFHostPrefix.
-var CFHostLabels map[int]string
+// CFHostLabels lists, per DC, the interchangeable host labels (<label>.<domain>)
+// to use instead of "<CFHostPrefix><dc>". The first label is the preferred one;
+// the others are failover spares (see package cflabels). DCs without an entry
+// use CFHostPrefix.
+var CFHostLabels map[int][]string
+
+// CFLabelsFor returns the labels to try for dc, never empty.
+func CFLabelsFor(dc int) []string {
+	if dc < 0 {
+		dc = -dc
+	}
+	if labels := CFHostLabels[dc]; len(labels) > 0 {
+		return labels
+	}
+	return []string{CFHostPrefix + itoa(dc)}
+}
 
 func CFWSDomain(baseDomain string, dc int) string {
 	if dc < 0 {
 		dc = -dc
 	}
-	if label, ok := CFHostLabels[dc]; ok && label != "" {
-		return label + "." + baseDomain
-	}
-	return CFHostPrefix + itoa(dc) + "." + baseDomain
+	return CFLabelsFor(dc)[0] + "." + baseDomain
 }
 
 func CFWSDomains(baseDomain string, dc int) []string {

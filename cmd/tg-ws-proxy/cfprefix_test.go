@@ -63,13 +63,16 @@ func TestParseArgsCFWorkerDomains(t *testing.T) {
 func TestParseArgsCFLabels(t *testing.T) {
 	old := telegram.CFHostLabels
 	defer func() { telegram.CFHostLabels = old }()
-	if _, err := parseArgs([]string{"-cf-labels", "1=lumen, 2=orbit,203=zephyr"}); err != nil {
+	if _, err := parseArgs([]string{"-cf-labels", "1=lumen, 2=orbit|dune|cedar,203=zephyr"}); err != nil {
 		t.Fatal(err)
 	}
-	if telegram.CFHostLabels[2] != "orbit" || telegram.CFHostLabels[203] != "zephyr" || len(telegram.CFHostLabels) != 3 {
+	if telegram.CFHostLabels[2][0] != "orbit" || telegram.CFHostLabels[203][0] != "zephyr" || len(telegram.CFHostLabels) != 3 {
 		t.Fatalf("labels: %v", telegram.CFHostLabels)
 	}
-	for _, bad := range []string{"2", "x=orbit", "2=Bad_Label", "0=a", "2=-a"} {
+	if got := telegram.CFHostLabels[2]; len(got) != 3 || got[1] != "dune" || got[2] != "cedar" {
+		t.Fatalf("spares not parsed: %v", got)
+	}
+	for _, bad := range []string{"2", "x=orbit", "2=Bad_Label", "0=a", "2=-a", "2=orbit|", "2=a||b"} {
 		if _, err := parseArgs([]string{"-cf-labels", bad}); err == nil {
 			t.Fatalf("accepted invalid --cf-labels %q", bad)
 		}
