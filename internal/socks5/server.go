@@ -275,9 +275,12 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 		return ws, nil
 	}
 
-	workerDst := targetIP
+	// The relay speaks raw MTProto to dst:443, so it needs the DC's own address.
+	// plan.targetIP (from --dc-ip, 149.154.167.220 by default) is the websocket
+	// front-end that expects TLS+WS and would reset a raw MTProto stream.
+	workerDst := telegram.DefaultDCIPs[effectiveDC]
 	if workerDst == "" {
-		workerDst = telegram.DefaultDCIPs[effectiveDC]
+		workerDst = targetIP
 	}
 	if s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && workerDst != "" {
 		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, workerDst); err == nil {

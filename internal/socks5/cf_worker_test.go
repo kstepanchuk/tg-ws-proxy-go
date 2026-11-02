@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"tg-ws-proxy/internal/config"
+	"tg-ws-proxy/internal/telegram"
 	"tg-ws-proxy/internal/wsbridge"
 )
 
@@ -46,7 +47,7 @@ func TestWorkerIsLastResortAfterCloudflareAndTelegram(t *testing.T) {
 	if order[len(order)-1] != "worker" || len(order) < 2 {
 		t.Fatalf("worker must come after the other routes, order=%v", order)
 	}
-	if gotDomain != "w1.workers.dev" || gotDst != testIPv4DC2 || gotDC != 2 {
+	if gotDomain != "w1.workers.dev" || gotDst != telegram.DefaultDCIPs[2] || gotDC != 2 {
 		t.Fatalf("worker args: %q %q %d", gotDomain, gotDst, gotDC)
 	}
 }
@@ -103,5 +104,37 @@ func TestRelayOnlyUsesDefaultDCAddress(t *testing.T) {
 	dec := decideTelegramWSRoute(cfg, telegramRoutePlan{dc: 1, effectiveDC: 1, wsDomainDC: 1})
 	if dec.action != telegramWSRouteConnect {
 		t.Fatalf("route decision with a relay and no address must connect, got %v", dec.action)
+	}
+}
+
+// Regression: for DC2/DC4 the configured target (149.154.167.220) is the
+// websocket front-end; the relay must be given the DC's raw MTProto address.
+func TestRelayNeverGetsTheWebsocketFrontEndAddress(t *testing.T) {
+	cfg := config.Default()
+	cfg.PoolSize = 0
+	cfg.UseCFProxy = false
+	cfg.CFWorkerDomains = []string{"198.51.100.7:8443@relay.example.com"}
+	cfg.CFWorkerFirst = true
+	srv := NewServer(cfg, log.New(io.Discard, "", 0))
+	srv.wsDialFunc = func(ctx context.Context, cfg config.Config, targetIP, domain string) (*wsbridge.Client, error) {
+		return nil, errors.New("unused")
+	}
+	for _, dc := range []int{2, 4} {
+		var got string
+		srv.wsDialWorkerFunc = func(ctx context.Context, cfg config.Config, workerDomain, dstIP string, d int) (*wsbridge.Client, error) {
+			got = dstIP
+			c, p := net.Pipe()
+			t.Cleanup(func() { _ = p.Close() })
+			return wsbridge.NewClient(c), nil
+		}
+		// "149.154.167.220" is what --dc-ip defaults to for DC2 and DC4.
+		ws, err := srv.connectTelegramThenCloudflareWS(context.Background(), "c", dc, dc, false, "149.154.167.220", true)
+		if err != nil || ws == nil {
+			t.Fatalf("dc%d: %v", dc, err)
+		}
+		_ = ws.Close()
+		if got == "149.154.167.220" || got != telegram.DefaultDCIPs[dc] {
+			t.Fatalf("dc%d: relay got %q, want the raw DC address %q", dc, got, telegram.DefaultDCIPs[dc])
+		}
 	}
 }
