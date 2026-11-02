@@ -275,8 +275,12 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 		return ws, nil
 	}
 
-	if s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
-		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, targetIP); err == nil {
+	workerDst := targetIP
+	if workerDst == "" {
+		workerDst = telegram.DefaultDCIPs[effectiveDC]
+	}
+	if s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && workerDst != "" {
+		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, workerDst); err == nil {
 			s.debugf("[%s] route=websocket primary=relay dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
 			return ws, nil
 		} else {
@@ -311,8 +315,8 @@ func (s *Server) connectTelegramThenCloudflareWS(ctx context.Context, clientAddr
 	}
 
 	// Last resort: a Cloudflare Worker relaying raw TCP to the DC.
-	if !s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && targetIP != "" {
-		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, targetIP); err == nil {
+	if !s.cfg.CFWorkerFirst && len(s.cfg.CFWorkerDomains) > 0 && workerDst != "" {
+		if ws, err := s.connectWSWorker(ctx, dc, effectiveDC, workerDst); err == nil {
 			s.debugf("[%s] route=websocket fallback=cf-worker dc=%d effective_dc=%d media=%v", clientAddr, dc, effectiveDC, isMedia)
 			return ws, nil
 		} else {

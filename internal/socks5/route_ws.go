@@ -26,16 +26,19 @@ type telegramWSRouteDecision struct {
 func decideTelegramWSRoute(cfg config.Config, plan telegramRoutePlan) telegramWSRouteDecision {
 	allowCloudflareWS := cfg.UseCFProxy && len(cfg.CFDomains) > 0 && plan.wsDomainDC != 0
 	allowTelegramWS := plan.targetIP != "" && isWSEnabledDC(plan.wsDomainDC)
+	// A configured Worker/relay is a websocket route of its own: it only needs the
+	// DC to be known (its target falls back to the default DC address).
+	allowWorkerWS := len(cfg.CFWorkerDomains) > 0 && plan.wsDomainDC != 0
 
 	switch {
-	case !allowTelegramWS && !allowCloudflareWS && plan.targetIP == "":
+	case !allowTelegramWS && !allowCloudflareWS && !allowWorkerWS && plan.targetIP == "":
 		return telegramWSRouteDecision{
 			action:            telegramWSRouteTCPFallbackNoOverride,
 			allowCloudflareWS: allowCloudflareWS,
 			allowTelegramWS:   allowTelegramWS,
 			fallbackHost:      "",
 		}
-	case !allowTelegramWS && !allowCloudflareWS:
+	case !allowTelegramWS && !allowCloudflareWS && !allowWorkerWS:
 		return telegramWSRouteDecision{
 			action:            telegramWSRouteTCPFallbackWSDisabled,
 			allowCloudflareWS: allowCloudflareWS,

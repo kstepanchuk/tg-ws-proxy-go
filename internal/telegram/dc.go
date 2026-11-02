@@ -148,6 +148,17 @@ func WSDomains(dc int, isMedia bool) []string {
 // TLS SNI by the "kws" pattern, so it can be changed with --cf-prefix.
 var CFHostPrefix = "kws"
 
+// DefaultDCIPs are the production front-end addresses used as relay targets when
+// no --dc-ip is configured for a DC (same table as upstream DC_DEFAULT_IPS).
+var DefaultDCIPs = map[int]string{
+	1:   "149.154.175.50",
+	2:   "149.154.167.51",
+	3:   "149.154.175.100",
+	4:   "149.154.167.91",
+	5:   "149.154.171.5",
+	203: "91.105.192.100",
+}
+
 // CFHostLabels lists, per DC, the interchangeable host labels (<label>.<domain>)
 // to use instead of "<CFHostPrefix><dc>". The first label is the preferred one;
 // the others are failover spares (see package cflabels). DCs without an entry

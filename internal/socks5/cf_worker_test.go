@@ -66,3 +66,42 @@ func TestNoWorkerRouteWhenNotConfigured(t *testing.T) {
 		t.Fatal("expected failure")
 	}
 }
+
+// With only a relay configured (no Cloudflare domain, no --dc-ip) a DC without a
+// configured address must still use the relay, targeting the default DC address.
+func TestRelayOnlyUsesDefaultDCAddress(t *testing.T) {
+	cfg := config.Default()
+	cfg.PoolSize = 0
+	cfg.UseCFProxy = false
+	cfg.DCIPs = map[int]string{} // nothing configured for DC1
+	cfg.CFWorkerDomains = []string{"198.51.100.7:8443@relay.example.com"}
+	cfg.CFWorkerFirst = true
+	srv := NewServer(cfg, log.New(io.Discard, "", 0))
+
+	var gotDst string
+	var gotDC int
+	srv.wsDialFunc = func(ctx context.Context, cfg config.Config, targetIP, domain string) (*wsbridge.Client, error) {
+		t.Fatalf("direct dial must not be needed: %s", targetIP)
+		return nil, errors.New("unused")
+	}
+	srv.wsDialWorkerFunc = func(ctx context.Context, cfg config.Config, workerDomain, dstIP string, dc int) (*wsbridge.Client, error) {
+		gotDst, gotDC = dstIP, dc
+		c, p := net.Pipe()
+		t.Cleanup(func() { _ = p.Close() })
+		return wsbridge.NewClient(c), nil
+	}
+
+	ws, err := srv.connectTelegramThenCloudflareWS(context.Background(), "c", 1, 1, false, "", false)
+	if err != nil || ws == nil {
+		t.Fatalf("ws=%v err=%v", ws, err)
+	}
+	_ = ws.Close()
+	if gotDst != "149.154.175.50" || gotDC != 1 {
+		t.Fatalf("relay got dst=%q dc=%d, want the DC1 default address", gotDst, gotDC)
+	}
+
+	dec := decideTelegramWSRoute(cfg, telegramRoutePlan{dc: 1, effectiveDC: 1, wsDomainDC: 1})
+	if dec.action != telegramWSRouteConnect {
+		t.Fatalf("route decision with a relay and no address must connect, got %v", dec.action)
+	}
+}
